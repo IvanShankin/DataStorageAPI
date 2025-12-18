@@ -1,0 +1,16 @@
+# CA
+certs/ca/ca.key
+
+# Private keys
+certs/**/**/*.key
+certs/**/**/*.pfx
+
+# OpenSSL artifacts
+certs/**/*.csr
+certs/**/*.srl
+
+# Configs for cert generation
+certs/**/*.cnf
+
+.env
+.test.env

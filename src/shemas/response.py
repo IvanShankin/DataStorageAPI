@@ -1,0 +1,19 @@
+from pydantic import BaseModel
+
+
+
+class BaseResponseModel(BaseModel):
+    message: str
+
+
+class CreatedSecretStringData(BaseModel):
+    string_id: int
+    name: str
+    enc_version: int
+
+    model_config = {
+        "from_attributes": True
+    }
+
+class CreatedSecretStringResponse(BaseResponseModel):
+    data: CreatedSecretStringData
