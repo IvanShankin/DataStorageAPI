@@ -1,8 +1,8 @@
 from fastapi import APIRouter, status
 
 from src.service.data_base.actions import create_secret_string
-from src.shemas.requests import CreateString
-from src.shemas.response import CreatedSecretStringResponse
+from src.schemas.requests import CreateString
+from src.schemas.response import CreatedSecretStringResponse
 
 router = APIRouter()
 

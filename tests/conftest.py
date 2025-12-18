@@ -72,9 +72,9 @@ def uvicorn_server():
         "src.main:app",
         "--host", "127.0.0.1",
         "--port", "7591",
-        "--ssl-certfile", str(cert_dir / "server_storage.crt"),
-        "--ssl-keyfile", str(cert_dir / "server_storage.key"),
-        "--ssl-ca-certs", str(cert_dir / "ca.crt"),
+        "--ssl-certfile", str(cert_dir / "storage" / "server_shop_cert.pem"),
+        "--ssl-keyfile", str(cert_dir / "storage" / "server_shop_key.pem"),
+        "--ssl-ca-certs", str(cert_dir / "ca" / "ca.crt"),
         "--ssl-cert-reqs", "2",  # ssl.CERT_REQUIRED
         "--log-level", "warning",
     ]

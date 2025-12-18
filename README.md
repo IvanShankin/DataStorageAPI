@@ -12,32 +12,6 @@
 
 
 
-## Генерация сертификатов
-
-### CA
-openssl genrsa -out ca.key 4096
-openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt
-
-### Server
-openssl genrsa -out server_storage.key 2048
-openssl req -new -key server_storage.key -out server_storage.csr -config server_storage.cnf
-openssl x509 -req -in server_storage.csr \
-  -CA ca.crt -CAkey ca.key -CAcreateserial \
-  -out server_storage.crt -days 825 -sha256 \
-  -extensions req_ext -extfile server_storage.cnf
-
-
-```bash
-openssl genrsa -out server_storage.key 2048
-openssl req -new -key server_storage.key -out server_storage.csr -config server_storage.cnf
-openssl x509 -req -in server_storage.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
-    -out server_storage.crt -days 825 -sha256 \
-    -extensions req_ext -extfile server_storage.cnf
-
-```
-
-
-
 
 
 
@@ -113,7 +87,6 @@ openssl req -x509 -new -nodes \
 ---
 
 ### 5.2 Сертификат сервера (Storage)
-
 ```bash
 openssl genrsa -out server_storage.key 2048
 

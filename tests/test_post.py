@@ -5,7 +5,7 @@ from httpx import AsyncClient, ASGITransport
 
 from src.main import app
 from src.service.data_base.actions import get_secret_string
-from src.shemas.response import CreatedSecretStringData
+from src.schemas.response import CreatedSecretStringData
 
 
 @pytest.mark.asyncio
