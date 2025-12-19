@@ -1,11 +1,14 @@
-from typing import Callable, Awaitable
-from sqlalchemy import select, func
+from datetime import datetime, UTC
+from typing import Callable, Awaitable, List
+from sqlalchemy import select, func, update, delete
+from sqlalchemy.orm import selectinload
 
 from src.config import ENC_VERSION
 from src.exceptions.server_exceptions import NameAlreadyExists, SecretNotFound
 from src.schemas.requests import SecretStringCreate
 from src.service.data_base.core import get_db
 from src.service.data_base.models import SecretsStrings, SecretsFiles, Secrets
+from src.utils.core_logger import logger
 
 
 async def _get_last_version_secret(db_table: object, name: str) -> int:
@@ -81,6 +84,20 @@ async def get_secret_files(name: str, version: int = None) -> SecretsFiles | Non
     return await _get_secret(SecretsFiles, get_last_version_in_secret_file, name, version)
 
 
+async def get_secret(name: str) -> Secrets | None:
+    """
+    Вернёт даже удалённый секрет (Secrets.is_delete == True)
+    :return Secrets: Вернёт со всеми погруженными связями
+    """
+    async with get_db() as session_db:
+        result_db = await session_db.execute(
+            select(Secrets)
+            .options(selectinload(Secrets.secret_string), selectinload(Secrets.secret_file))
+            .where(Secrets.name == name)
+        )
+        return result_db.scalar_one_or_none()
+
+
 async def create_secret_string(
     name: str,
     encrypted_data: bytes,
@@ -139,4 +156,70 @@ async def create_next_string_version(data: SecretStringCreate) -> SecretsStrings
         secret_id=secret.secret_id,
         **(data.model_dump())
     )
+
+
+async def mark_is_delete_secret(name: str) -> bool:
+    async with get_db() as session_db:
+        async with session_db.begin():
+            result_db = await session_db.execute(
+                select(Secrets)
+                .where(Secrets.name == name)
+                .with_for_update()
+            )
+            secret = result_db.scalar_one_or_none()
+
+            if not secret:
+                logger.info("attempt to mark remote a secret that does not exist")
+                return False
+
+            if secret.is_deleted:
+                logger.info("attempt to mark remote a secret that has already been matk Remote")
+                return True
+
+            secret.is_deleted = True
+            secret.deleted_at = datetime.now(UTC)
+            return True
+
+
+async def purge_secret_db(name: str) -> List[str]:
+    """
+    Возвращает список путей файлов, которые нужно удалить
+    """
+    path_for_removal = []
+    async with get_db() as session_db:
+        async with session_db.begin():
+            result_db = await session_db.execute(
+                select(Secrets)
+                .options(selectinload(Secrets.secret_string), selectinload(Secrets.secret_file))
+                .where(Secrets.name == name)
+            )
+            secret: Secrets = result_db.scalar_one_or_none()
+
+            if not secret:
+                logger.info("attempt to delete a secret that does not exist")
+                return path_for_removal
+
+            if secret.secret_string:
+                await session_db.execute(
+                    delete(SecretsStrings)
+                    .where(SecretsStrings.secret_id == secret.secret_id)
+                )
+            else:
+                result_db = await session_db.execute(
+                    delete(SecretsFiles)
+                    .where(SecretsFiles.secret_id == secret.secret_id)
+                    .returning(SecretsFiles)
+                )
+                deleted_secrets: List[SecretsFiles] = result_db.scalars().all()
+
+                path_for_removal = [secret_file.file_path for secret_file in deleted_secrets]
+
+
+            await session_db.execute(
+                delete(Secrets)
+                .where(Secrets.secret_id == secret.secret_id)
+            )
+
+
+    return path_for_removal
 

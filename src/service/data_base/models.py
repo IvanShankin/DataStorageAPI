@@ -47,6 +47,7 @@ class SecretsFiles(Base):
 
     version = Column(Integer, nullable=False, server_default=text("1")) # версия пользователя
 
+    file_path = Column(String(500), nullable=False) # путь от директории MEDIA_DIR
     storage_key = Column(String(255), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
     sha256 = Column(LargeBinary(32), nullable=False)

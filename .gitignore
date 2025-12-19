@@ -17,3 +17,4 @@ certs/**/*.cnf
 
 .env
 .test.env
+*.log

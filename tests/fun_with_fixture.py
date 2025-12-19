@@ -8,7 +8,7 @@ from src.service.data_base.models import SecretsStrings, Secrets
 async def create_secret_fab(
     name: str = "test_secret",
     is_deleted: bool = False,
-    deleted_at: datetime = datetime.now(UTC),
+    deleted_at: datetime = None,
 ):
     async with get_db() as session_db:
         secret = Secrets(

@@ -14,3 +14,8 @@ DB_NAME = os.getenv('DB_NAME')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
+
+MEDIA_DIR = BASE_DIR / "media"
+MEDIA_DIR.mkdir(exist_ok=True)
+LOG_DIR = MEDIA_DIR / 'logs'
+LOG_FILE = LOG_DIR / "storage_service.log"
