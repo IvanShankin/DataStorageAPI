@@ -47,9 +47,9 @@ class SecretsFiles(Base):
 
     version = Column(Integer, nullable=False, server_default=text("1")) # версия пользователя
 
-    file_path = Column(String(500), nullable=False) # путь от директории MEDIA_DIR
-    storage_key = Column(String(255), nullable=False)
+    file_name = Column(String(1000), nullable=False) # файл находится в SECRET_FILES_DIR
     size_bytes = Column(BigInteger, nullable=False)
+    nonce = Column(LargeBinary(12), nullable=False)
     sha256 = Column(LargeBinary(32), nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

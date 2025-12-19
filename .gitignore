@@ -1,4 +1,10 @@
 __pycache__/
+.idea/
+*.iml
+*.iws
+*.ipr
+*.iws
+
 # CA
 certs/ca/ca.key
 

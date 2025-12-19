@@ -17,3 +17,12 @@ class CreatedSecretStringData(BaseModel):
 
 class SecretStringResponse(BaseResponseModel):
     data: CreatedSecretStringData
+
+
+class CreatedSecretFileData(BaseModel):
+    file_id: int
+    name: str
+
+
+class SecretFileResponse(BaseResponseModel):
+    data: CreatedSecretFileData

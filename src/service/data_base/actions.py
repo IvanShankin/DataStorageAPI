@@ -1,17 +1,21 @@
 from datetime import datetime, UTC
 from typing import Callable, Awaitable, List
+
+from fastapi import UploadFile, HTTPException
 from sqlalchemy import select, func, update, delete
 from sqlalchemy.orm import selectinload
 
-from src.config import ENC_VERSION
+from src.config import ENC_VERSION, MEDIA_DIR, SECRET_FILES_DIR
 from src.exceptions.server_exceptions import NameAlreadyExists, SecretNotFound
 from src.schemas.requests import SecretStringCreate
 from src.service.data_base.core import get_db
 from src.service.data_base.models import SecretsStrings, SecretsFiles, Secrets
+from src.service.filesystem.actions import save_uploaded_file
 from src.utils.core_logger import logger
+from src.utils.validator import decode_b64
 
 
-async def _get_last_version_secret(db_table: object, name: str) -> int:
+async def _get_last_version_secret(db_table: object, name: str) -> int | None:
     """
     :param db_table: Таблица должна иметь поле "name" и "version", быть связана с таблице Secrets
     :param name: Искомое имя
@@ -63,11 +67,13 @@ async def _get_secret(
 
 
 async def get_last_version_in_secret_string(name: str) -> int:
-    return await _get_last_version_secret(SecretsStrings, name)
+    result = await _get_last_version_secret(SecretsStrings, name)
+    return result if result else 0
 
 
 async def get_last_version_in_secret_file(name: str) -> int:
-    return await _get_last_version_secret(SecretsFiles, name)
+    result = await _get_last_version_secret(SecretsFiles, name)
+    return result if result else 0
 
 
 async def get_secret_string(name: str, version: int = None) -> SecretsStrings | None:
@@ -143,6 +149,48 @@ async def create_secret_string(
     return secret_string
 
 
+async def create_secret_file_service(
+    name: str,
+    file: UploadFile,
+    nonce_b64: str,
+    sha256_b64: str,
+):
+    nonce = decode_b64(nonce_b64, 12, "nonce")
+    sha256 = decode_b64(sha256_b64, 32, "sha256")
+
+    async with get_db() as session_db:
+        secret = await get_secret(name)
+
+        async with session_db.begin():
+            if secret and secret.is_deleted:
+                raise HTTPException(409, "Secret is deleted")
+
+            if secret:
+                raise NameAlreadyExists(name)
+
+            version = await get_last_version_in_secret_file(name) + 1
+
+            file_name = await save_uploaded_file(file)
+
+            secret = Secrets(name=name)
+            session_db.add(secret)
+
+            await session_db.flush()
+
+            db_file = SecretsFiles(
+                secret_id=secret.secret_id,
+                version=version,
+                file_name=file_name,
+                size_bytes=file.spool_max_size if hasattr(file, "spool_max_size") else 0,
+                nonce=nonce,
+                sha256=sha256,
+            )
+
+            session_db.add(db_file)
+
+        return db_file
+
+
 async def create_next_string_version(data: SecretStringCreate) -> SecretsStrings:
     last_version = await get_last_version_in_secret_string(data.name)
     secret = await get_secret_string(data.name)
@@ -212,7 +260,7 @@ async def purge_secret_db(name: str) -> List[str]:
                 )
                 deleted_secrets: List[SecretsFiles] = result_db.scalars().all()
 
-                path_for_removal = [secret_file.file_path for secret_file in deleted_secrets]
+                path_for_removal = [SECRET_FILES_DIR / secret_file.file_name for secret_file in deleted_secrets]
 
 
             await session_db.execute(

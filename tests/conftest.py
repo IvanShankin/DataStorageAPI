@@ -16,10 +16,9 @@ MODE = os.getenv('MODE')
 from src.config import BASE_DIR
 from src.service.data_base.filling_database import create_database
 
-import pytest_asyncio
 import pytest
 
-from tests.helpers_fixture import create_string_secret
+from tests.helpers_fixture import *
 
 @pytest_asyncio.fixture(scope='session', autouse=True)
 async def create_database_fixture():
@@ -28,6 +27,10 @@ async def create_database_fixture():
 
     await create_database()
 
+
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def replacement_needed_modules(replace_secret_files_dir):
+    pass
 
 
 @pytest_asyncio.fixture(scope="function", autouse=True)

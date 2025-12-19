@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
@@ -41,6 +43,18 @@ async def test_purge_secret(create_string_secret):
 
 
 
-# сделать тест на удаление файла
-# сделать тест на удаление файла
-# сделать тест на удаление файла
+@pytest.mark.asyncio
+async def test_purge_secret(create_file_secret_fix):
+    secret_name = "test_create_file"
+    secret_file = await create_file_secret_fix(secret_name=secret_name)
+
+    async with AsyncClient(
+            transport=ASGITransport(app),
+            base_url="http://test",
+    ) as ac:
+        response = await ac.post(
+            f"/secrets/{secret_name}/purge",
+        )
+
+        assert not await get_secret(secret_name)
+        assert not os.path.isfile(secret_file.file_name)
