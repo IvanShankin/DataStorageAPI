@@ -15,5 +15,5 @@ class CreatedSecretStringData(BaseModel):
         "from_attributes": True
     }
 
-class CreatedSecretStringResponse(BaseResponseModel):
+class SecretStringResponse(BaseResponseModel):
     data: CreatedSecretStringData

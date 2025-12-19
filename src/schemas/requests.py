@@ -3,7 +3,7 @@ import base64
 from pydantic import BaseModel, Field, field_validator
 
 
-class CreateString(BaseModel):
+class SecretStringCreate(BaseModel):
     name: str = Field(..., max_length=255)
     encrypted_data: bytes
     nonce: bytes

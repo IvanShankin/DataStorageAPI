@@ -1,46 +1,122 @@
-import base64
+from typing import Callable, Awaitable
+from sqlalchemy import select, func
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.exceptions.server_exceptions import NameAlreadyExists
+from src.config import ENC_VERSION
+from src.exceptions.server_exceptions import NameAlreadyExists, SecretNotFound
+from src.schemas.requests import SecretStringCreate
 from src.service.data_base.core import get_db
-from src.service.data_base.models import SecretsStrings, SecretsFiles
+from src.service.data_base.models import SecretsStrings, SecretsFiles, Secrets
 
 
-# async def get_max_version_in_secret_string(session_db: AsyncSession, name: str) -> int:
-#     result_db = await session_db.execute(select(SecretsFiles.version).where(SecretsFiles.name == name))
-#     return result_db.scalar_one_or_none()
-#
-#
-# async def get_max_version_in_secret_file(session_db: AsyncSession, name: str) -> int:
-#     result_db = await session_db.execute(select(SecretsFiles.version).where(SecretsFiles.name == name))
-#     return result_db.scalar_one_or_none()
-
-
-async def get_secret_string(name: str) -> SecretsStrings:
+async def _get_last_version_secret(db_table: object, name: str) -> int:
+    """
+    :param db_table: Таблица должна иметь поле "name" и "version", быть связана с таблице Secrets
+    :param name: Искомое имя
+    """
     async with get_db() as session_db:
-        async with session_db.begin(): # в транзакции
-            result_db = await session_db.execute(select(SecretsStrings).where(SecretsStrings.name == name))
+        result = await session_db.execute(
+            select(db_table.version)
+            .join(Secrets)
+            .where(
+                (Secrets.name == name) &
+                (Secrets.is_deleted == False)
+            )
+            .order_by(db_table.version.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
+async def _get_secret(
+    db_table: object,
+    func_get_last_version: Callable[[str], Awaitable[int]],
+    name: str,
+    version: int = None
+) -> object:
+    """
+    :param db_table: Таблица должна иметь поле "name" и "version", быть связана с таблице Secrets
+    :param func_get_last_version: Должна принимать имя и возвращать версию
+    :param name: Искомое имя
+    :param version: При указании версии вернёт по ней. Если не указывать, то вернёт последнюю
+    """
+    if version is None:
+        version = await func_get_last_version(name)
+        if version is None:
+            return None
+
+    async with get_db() as session_db:
+        async with session_db.begin():
+            result_db = await session_db.execute(
+                select(db_table)
+                .join(Secrets)
+                .where(
+                    (Secrets.name == name) &
+                    (db_table.version == version) &
+                    (Secrets.is_deleted == False)
+                )
+                .with_for_update()
+            )
             return result_db.scalar_one_or_none()
 
 
-async def get_secret_files(name: str) -> SecretsFiles:
+async def get_last_version_in_secret_string(name: str) -> int:
+    return await _get_last_version_secret(SecretsStrings, name)
+
+
+async def get_last_version_in_secret_file(name: str) -> int:
+    return await _get_last_version_secret(SecretsFiles, name)
+
+
+async def get_secret_string(name: str, version: int = None) -> SecretsStrings | None:
+    """
+    При указании версии вернёт по ней. Если не указывать, то вернёт последнюю
+    """
+    return await _get_secret(SecretsStrings, get_last_version_in_secret_string, name, version)
+
+
+async def get_secret_files(name: str, version: int = None) -> SecretsFiles | None:
+    """
+    При указании версии вернёт по ней. Если не указывать, то вернёт последнюю
+    """
+    return await _get_secret(SecretsFiles, get_last_version_in_secret_file, name, version)
+
+
+async def create_secret_string(
+    name: str,
+    encrypted_data: bytes,
+    nonce: bytes,
+    sha256: bytes,
+    version: int = 1,
+    new_secret: bool = True,
+    secret_id: int = None
+) -> SecretsStrings:
+    """
+    :param new_secret: Если установить True, то будет проверка на наличие такой строки, если есть, то вызовет исключение NameAlreadyExists
+    :param secret_id: Если не указать, то будет создана новая запись в таблице Secrets. Необходим только для новой версии
+    :except NameAlreadyExists: Если данное имя занято (только при создании нового секрета)
+    """
+    if (not new_secret and not secret_id) or (new_secret and secret_id):
+        raise ValueError()
+
     async with get_db() as session_db:
-        result_db = await session_db.execute(select(SecretsFiles).where(SecretsFiles.name == name))
-        return result_db.scalar_one_or_none()
+        if new_secret:
+            if await get_secret_string(name):
+                raise NameAlreadyExists(name)
 
+            secret = Secrets(name=name)
+            session_db.add(secret)
 
-async def create_secret_string(name: str, encrypted_data: bytes, nonce: bytes, sha256: bytes) -> SecretsStrings:
-    if await get_secret_string(name):
-        raise NameAlreadyExists(name)
+            await session_db.flush()
 
-    async with get_db() as session_db:
+            secret_id = secret.secret_id
+
         secret_string = SecretsStrings(
-            name=name,
+            secret_id=secret_id,
             encrypted_data=encrypted_data,
             nonce=nonce,
-            sha256=sha256
+            sha256=sha256,
+            version=version,
+            enc_version=ENC_VERSION
         )
 
         session_db.add(secret_string)
@@ -48,3 +124,19 @@ async def create_secret_string(name: str, encrypted_data: bytes, nonce: bytes, s
         await session_db.refresh(secret_string)
 
     return secret_string
+
+
+async def create_next_string_version(data: SecretStringCreate) -> SecretsStrings:
+    last_version = await get_last_version_in_secret_string(data.name)
+    secret = await get_secret_string(data.name)
+
+    if not last_version or not secret:
+        raise SecretNotFound(data.name)
+
+    return await create_secret_string(
+        version=last_version + 1,
+        new_secret=False,
+        secret_id=secret.secret_id,
+        **(data.model_dump())
+    )
+

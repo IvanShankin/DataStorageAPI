@@ -5,6 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()  # Загружает переменные из .env
+ENC_VERSION = int(os.getenv('ENC_VERSION'))
 DB_HOST = os.getenv('DB_HOST')
 DB_USER = os.getenv('DB_USER')
 DB_PASSWORD = os.getenv('DB_PASSWORD')

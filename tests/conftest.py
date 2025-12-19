@@ -19,6 +19,7 @@ from src.service.data_base.filling_database import create_database
 import pytest_asyncio
 import pytest
 
+from tests.helpers_fixture import create_string_secret
 
 @pytest_asyncio.fixture(scope='session', autouse=True)
 async def create_database_fixture():
