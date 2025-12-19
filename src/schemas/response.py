@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -26,3 +28,20 @@ class CreatedSecretFileData(BaseModel):
 
 class SecretFileResponse(BaseResponseModel):
     data: CreatedSecretFileData
+
+
+class FullSecretStringResponse(CreatedSecretStringData):
+    encrypted_data: str
+    nonce: str
+    sha256: str
+    version: int
+
+
+class SecretFileMetaResponse(BaseModel):
+    name: str
+    version: int
+    file_name: str
+    size_bytes: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

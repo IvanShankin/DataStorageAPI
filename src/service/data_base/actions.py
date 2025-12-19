@@ -38,7 +38,7 @@ async def _get_secret(
     db_table: object,
     func_get_last_version: Callable[[str], Awaitable[int]],
     name: str,
-    version: int = None
+    version: int = None,
 ) -> object:
     """
     :param db_table: Таблица должна иметь поле "name" и "version", быть связана с таблице Secrets
@@ -52,18 +52,16 @@ async def _get_secret(
             return None
 
     async with get_db() as session_db:
-        async with session_db.begin():
-            result_db = await session_db.execute(
-                select(db_table)
-                .join(Secrets)
-                .where(
-                    (Secrets.name == name) &
-                    (db_table.version == version) &
-                    (Secrets.is_deleted == False)
-                )
-                .with_for_update()
+        result_db = await session_db.execute(
+            select(db_table)
+            .join(Secrets)
+            .where(
+                (Secrets.name == name) &
+                (db_table.version == version) &
+                (Secrets.is_deleted == False)
             )
-            return result_db.scalar_one_or_none()
+        )
+        return result_db.scalar_one_or_none()
 
 
 async def get_last_version_in_secret_string(name: str) -> int:

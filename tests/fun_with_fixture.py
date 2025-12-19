@@ -57,7 +57,7 @@ async def create_file_secret_fab(
     secret_id: int = None,
     version: int = 1,
     secret_name: str = "secret_string_test",
-    file_stream: bytes = b"file_data",
+    file_content: bytes = b"file_data",
     file_name: str = "test_file_name",
     nonce: bytes = b"123456789012",
     sha256: bytes = b"12345678901234567890123456789012",
@@ -66,7 +66,7 @@ async def create_file_secret_fab(
     SECRET_FILES_DIR.mkdir(exist_ok=True)
 
     with open(str(SECRET_FILES_DIR / file_name), "wb") as file:
-        file.write(file_stream)
+        file.write(file_content)
 
     if secret_id is None:
         secret = await create_secret_fab(name=secret_name)

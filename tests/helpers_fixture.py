@@ -26,11 +26,14 @@ async def replace_secret_files_dir(monkeypatch, tmp_path):
     from src import config
     from src.service.filesystem import actions as actions_files
     from src.service.data_base import actions as actions_ser
+    from src.routers import get
 
     new_secret_files_dir = tmp_path / "secret_files_test"
     monkeypatch.setattr(config, "SECRET_FILES_DIR", new_secret_files_dir)
     monkeypatch.setattr(actions_files, "SECRET_FILES_DIR", new_secret_files_dir)
     monkeypatch.setattr(actions_ser, "SECRET_FILES_DIR", new_secret_files_dir)
+    monkeypatch.setattr(actions_ser, "SECRET_FILES_DIR", new_secret_files_dir)
+    monkeypatch.setattr(get, "SECRET_FILES_DIR", new_secret_files_dir)
 
     yield
 
