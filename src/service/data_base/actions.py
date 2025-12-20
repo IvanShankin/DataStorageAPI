@@ -3,6 +3,8 @@ from typing import Callable, Awaitable, List
 
 from fastapi import UploadFile, HTTPException
 from sqlalchemy import select, delete
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.config import ENC_VERSION, SECRET_FILES_DIR
@@ -10,7 +12,7 @@ from src.exceptions.server_exceptions import NameAlreadyExists, SecretNotFound
 from src.schemas.requests import SecretStringCreate
 from src.service.data_base.core import get_db
 from src.service.data_base.models import SecretsStrings, SecretsFiles, Secrets, AuditLog
-from src.service.filesystem.actions import save_uploaded_file
+from src.service.filesystem.actions import save_uploaded_file, delete_file_safe
 from src.utils.core_logger import logger
 from src.utils.validator import decode_b64
 
@@ -88,35 +90,43 @@ async def get_secret_files(name: str, version: int = None) -> SecretsFiles | Non
     return await _get_secret(SecretsFiles, get_last_version_in_secret_file, name, version)
 
 
-async def get_secret(name: str) -> Secrets | None:
+async def get_secret(
+    name: str,
+    session_db: AsyncSession,
+    use_with_for_update: bool = True
+) -> Secrets | None:
     """
     Вернёт даже удалённый секрет (Secrets.is_delete == True)
     :return Secrets: Вернёт со всеми погруженными связями
     """
-    async with get_db() as session_db:
-        result_db = await session_db.execute(
-            select(Secrets)
-            .options(selectinload(Secrets.secret_string), selectinload(Secrets.secret_file))
-            .where(Secrets.name == name)
-        )
-        return result_db.scalar_one_or_none()
+    query = (
+        select(Secrets)
+        .options(selectinload(Secrets.secret_string), selectinload(Secrets.secret_file))
+        .where(Secrets.name == name)
+    )
+
+    if use_with_for_update:
+        query = query.with_for_update()
+
+    result_db = await session_db.execute(query)
+    return result_db.scalar_one_or_none()
 
 
-async def create_secret(name: str) -> Secrets:
-    async with get_db() as session_db:
+async def create_secret(name: str, session_db: AsyncSession) -> Secrets:
+    """
+    :param session_db:  Сессия БД в ТРАНЗАКЦИИ
+    """
+    check_secret = await get_secret(name, session_db)
 
-        check_secret = await get_secret(name)
+    if check_secret:
+        if check_secret.is_deleted:
+            raise HTTPException(409, "Secret is deleted")
 
-        if check_secret:
-            if check_secret.is_deleted:
-                raise HTTPException(409, "Secret is deleted")
+        raise NameAlreadyExists(name)
 
-            raise NameAlreadyExists(name)
-
-        secret = Secrets(name=name)
-        session_db.add(secret)
-
-        await session_db.commit()
+    secret = Secrets(name=name)
+    session_db.add(secret)
+    await session_db.flush()
 
     return secret
 
@@ -135,35 +145,44 @@ async def create_secret_string(
     :param secret_id: Если не указать, то будет создана новая запись в таблице Secrets. Необходим только для новой версии
     :except NameAlreadyExists: Если данное имя занято (только при создании нового секрета)
     """
-    if (not new_secret and not secret_id) or (new_secret and secret_id):
-        raise ValueError()
+    try:
+        if (not new_secret and not secret_id) or (new_secret and secret_id):
+            raise ValueError()
 
-    if new_secret:
-        secret = await create_secret(name)
-        secret_id = secret.secret_id
+        async with get_db() as session_db:
+            async with session_db.begin():
+                if new_secret:
+                    secret = await create_secret(name, session_db)
+                    secret_id = secret.secret_id
 
-    async with get_db() as session_db:
-        secret_string = SecretsStrings(
-            secret_id=secret_id,
-            encrypted_data=encrypted_data,
-            nonce=nonce,
-            sha256=sha256,
-            version=version,
-            enc_version=ENC_VERSION
+                secret_string = SecretsStrings(
+                    secret_id=secret_id,
+                    encrypted_data=encrypted_data,
+                    nonce=nonce,
+                    sha256=sha256,
+                    version=version,
+                    enc_version=ENC_VERSION
+                )
+
+                log = AuditLog(
+                    action="The user created a secret string",
+                    secret_name=name
+                )
+
+                session_db.add(secret_string)
+                session_db.add(log)
+
+                await session_db.flush()
+                await session_db.refresh(secret_string)
+
+        return secret_string
+
+    except IntegrityError as exc:
+        logger.warning(
+            f"IntegrityError while creating secret. \nError: {str(exc)}",
+            extra={"secret_name": name}
         )
-
-        log = AuditLog(
-            action="The user created a secret string",
-            secret_name=name
-        )
-
-        session_db.add(secret_string)
-        session_db.add(log)
-
-        await session_db.commit()
-        await session_db.refresh(secret_string)
-
-    return secret_string
+        raise NameAlreadyExists(name) from exc
 
 
 async def create_secret_file_service(
@@ -175,38 +194,51 @@ async def create_secret_file_service(
     new_secret: bool = True,
     secret_id: int = None
 ) -> SecretsFiles:
-    if (not new_secret and not secret_id) or (new_secret and secret_id):
-        raise ValueError()
+    file_name = None
 
-    nonce = decode_b64(nonce_b64, 12, "nonce")
-    sha256 = decode_b64(sha256_b64, 32, "sha256")
+    try:
+        if (not new_secret and not secret_id) or (new_secret and secret_id):
+            raise ValueError()
 
-    if new_secret:
-        secret = await create_secret(name)
-        secret_id = secret.secret_id
+        nonce = decode_b64(nonce_b64, 12, "nonce")
+        sha256 = decode_b64(sha256_b64, 32, "sha256")
 
-    async with get_db() as session_db:
-        async with session_db.begin():
-            file_name = await save_uploaded_file(file)
+        async with get_db() as session_db:
+            async with session_db.begin():
+                if new_secret:
+                    secret = await create_secret(name, session_db)
+                    secret_id = secret.secret_id
 
-            db_file = SecretsFiles(
-                secret_id=secret_id,
-                version=version,
-                file_name=file_name,
-                size_bytes=file.spool_max_size if hasattr(file, "spool_max_size") else 0,
-                nonce=nonce,
-                sha256=sha256,
-            )
+                file_name, size_bytes = await save_uploaded_file(file)
 
-            log = AuditLog(
-                action="The user created a secret file",
-                secret_name=name
-            )
+                db_file = SecretsFiles(
+                    secret_id=secret_id,
+                    version=version,
+                    file_name=file_name,
+                    size_bytes=size_bytes,
+                    nonce=nonce,
+                    sha256=sha256,
+                )
 
-            session_db.add(log)
-            session_db.add(db_file)
+                log = AuditLog(
+                    action="The user created a secret file",
+                    secret_name=name
+                )
 
-        return db_file
+                session_db.add(log)
+                session_db.add(db_file)
+
+            return db_file
+    except IntegrityError as exc:
+        logger.warning(
+            "IntegrityError while creating secret",
+            extra={"secret_name": name}
+        )
+
+        if file_name:
+            delete_file_safe(SECRET_FILES_DIR / file_name)
+
+        raise NameAlreadyExists(name) from exc
 
 
 async def create_next_string_version(data: SecretStringCreate) -> SecretsStrings:
@@ -276,7 +308,7 @@ async def mark_is_delete_secret(name: str) -> bool:
                 return False
 
             if secret.is_deleted:
-                logger.info("attempt to mark remote a secret that has already been matk Remote")
+                logger.info("attempt to mark remote a secret that has already been marked for removal")
                 return True
 
             secret.is_deleted = True
@@ -337,7 +369,6 @@ async def purge_secret_db(name: str) -> List[str]:
             session_db.add(log)
 
     return path_for_removal
-
 
 
 async def create_log(action: str, secret_name: str) -> AuditLog:

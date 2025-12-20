@@ -17,15 +17,15 @@ class Secrets(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    secret_string = relationship("SecretsStrings", back_populates="secret")
-    secret_file = relationship("SecretsFiles", back_populates="secret")
+    secret_string = relationship("SecretsStrings", back_populates="secret", passive_deletes=True)
+    secret_file = relationship("SecretsFiles", back_populates="secret", passive_deletes=True)
 
 
 class SecretsStrings(Base):
     __tablename__ = "secrets_strings"
 
     string_id = Column(BigInteger, primary_key=True)
-    secret_id = Column(ForeignKey("secrets.secret_id"), nullable=False)
+    secret_id = Column(ForeignKey("secrets.secret_id", ondelete="CASCADE"), nullable=False)
 
     version = Column(Integer, nullable=True, server_default=text("1")) # версия пользователя
 
@@ -43,7 +43,7 @@ class SecretsFiles(Base):
     __tablename__ = "secrets_files"
 
     file_id = Column(BigInteger, primary_key=True)
-    secret_id = Column(ForeignKey("secrets.secret_id"), nullable=False)
+    secret_id = Column(ForeignKey("secrets.secret_id", ondelete="CASCADE"), nullable=False)
 
     version = Column(Integer, nullable=False, server_default=text("1")) # версия пользователя
 
