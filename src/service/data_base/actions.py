@@ -2,14 +2,14 @@ from datetime import datetime, UTC
 from typing import Callable, Awaitable, List
 
 from fastapi import UploadFile, HTTPException
-from sqlalchemy import select, func, update, delete
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
-from src.config import ENC_VERSION, MEDIA_DIR, SECRET_FILES_DIR
+from src.config import ENC_VERSION, SECRET_FILES_DIR
 from src.exceptions.server_exceptions import NameAlreadyExists, SecretNotFound
 from src.schemas.requests import SecretStringCreate
 from src.service.data_base.core import get_db
-from src.service.data_base.models import SecretsStrings, SecretsFiles, Secrets
+from src.service.data_base.models import SecretsStrings, SecretsFiles, Secrets, AuditLog
 from src.service.filesystem.actions import save_uploaded_file
 from src.utils.core_logger import logger
 from src.utils.validator import decode_b64
@@ -121,7 +121,12 @@ async def create_secret_string(
 
     async with get_db() as session_db:
         if new_secret:
-            if await get_secret_string(name):
+            check_secret = await get_secret(name)
+
+            if check_secret:
+                if check_secret.is_deleted:
+                    raise HTTPException(409, "Secret is deleted")
+
                 raise NameAlreadyExists(name)
 
             secret = Secrets(name=name)
@@ -141,6 +146,13 @@ async def create_secret_string(
         )
 
         session_db.add(secret_string)
+
+        log = AuditLog(
+            action="The user created a secret string",
+            secret_name=name
+        )
+        session_db.add(log)
+
         await session_db.commit()
         await session_db.refresh(secret_string)
 
@@ -184,6 +196,12 @@ async def create_secret_file_service(
                 sha256=sha256,
             )
 
+            log = AuditLog(
+                action="The user created a secret file",
+                secret_name=name
+            )
+
+            session_db.add(log)
             session_db.add(db_file)
 
         return db_file
@@ -196,12 +214,22 @@ async def create_next_string_version(data: SecretStringCreate) -> SecretsStrings
     if not last_version or not secret:
         raise SecretNotFound(data.name)
 
-    return await create_secret_string(
+    secret_str = await create_secret_string(
         version=last_version + 1,
         new_secret=False,
         secret_id=secret.secret_id,
         **(data.model_dump())
     )
+
+    async with get_db() as session_db:
+        log = AuditLog(
+            action="The user has created a new version of the secret",
+            secret_name=data.name
+        )
+        session_db.add(log)
+        await session_db.commit()
+
+    return secret_str
 
 
 async def mark_is_delete_secret(name: str) -> bool:
@@ -224,6 +252,13 @@ async def mark_is_delete_secret(name: str) -> bool:
 
             secret.is_deleted = True
             secret.deleted_at = datetime.now(UTC)
+
+            log = AuditLog(
+                action="The user marked the secret as deleted",
+                secret_name=name
+            )
+            session_db.add(log)
+
             return True
 
 
@@ -266,6 +301,24 @@ async def purge_secret_db(name: str) -> List[str]:
                 .where(Secrets.secret_id == secret.secret_id)
             )
 
+            log = AuditLog(
+                action="The user completely deleted the secret from the server",
+                secret_name=name
+            )
+            session_db.add(log)
 
     return path_for_removal
 
+
+
+async def create_log(action: str, secret_name: str) -> AuditLog:
+    async with get_db() as session_db:
+        log = AuditLog(
+            action=action,
+            secret_name=secret_name
+        )
+        session_db.add(log)
+        await session_db.commit()
+        await session_db.refresh(log)
+
+        return log

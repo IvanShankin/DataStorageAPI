@@ -4,7 +4,7 @@ from starlette.responses import FileResponse
 
 from src.config import SECRET_FILES_DIR
 from src.schemas.response import FullSecretStringResponse, SecretFileMetaResponse
-from src.service.data_base.actions import get_secret_string, get_secret_files
+from src.service.data_base.actions import get_secret_string, get_secret_files, create_log
 
 router = APIRouter()
 
@@ -28,6 +28,8 @@ async def get_secret_string_route(
     if not secret_str:
         raise HTTPException(status_code=404, detail="Secret string not found")
 
+    await create_log("The user received a secret string", name)
+
     return FullSecretStringResponse(
         name=name,
         **(secret_str.to_dict())
@@ -47,6 +49,8 @@ async def get_secret_file_meta(
 
     if not secret_file:
         raise HTTPException(status_code=404, detail="Secret file not found")
+
+    await create_log("The user received file metadata", name)
 
     return SecretFileMetaResponse(
         name=name,
@@ -72,6 +76,8 @@ async def download_secret_file(
 
     if not file_path.exists():
         raise HTTPException(status_code=410, detail="File missing on disk")
+
+    await create_log("The user received the file", name)
 
     return FileResponse(
         path=file_path,

@@ -55,3 +55,12 @@ class SecretsFiles(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     secret = relationship("Secrets", back_populates="secret_file")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    audit_log_id = Column(BigInteger, primary_key=True)
+    action = Column(String, nullable=False)
+    secret_name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
