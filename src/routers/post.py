@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status, BackgroundTasks, UploadFile, File, Form
 
 from src.service.data_base.actions import create_secret_string, create_next_string_version, purge_secret_db, \
-    create_secret_file_service
+    create_secret_file_service, create_next_file_version
 from src.schemas.requests import SecretStringCreate
 from src.schemas.response import SecretStringResponse, CreatedSecretStringData, BaseResponseModel, SecretFileResponse, \
     CreatedSecretFileData
@@ -25,7 +25,7 @@ async def create_string(data: SecretStringCreate):
 
 
 @router.post(
-    "/secrets/create_files",
+    "/secrets_files/create_files",
     response_model=SecretFileResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -54,9 +54,29 @@ async def create_secret_file(
 )
 async def create_next_secret_version(data: SecretStringCreate):
     secret_str = await create_next_string_version(data)
+
     return SecretStringResponse(
         message="Secret string version created successfully",
         data=CreatedSecretStringData(name=data.name, **(secret_str.to_dict()))
+    )
+
+
+@router.post(
+    "/secrets_files/versions",
+    response_model=SecretFileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_next_secret_version(
+    name: str = Form(...),
+    file: UploadFile = File(...),
+    nonce: str = Form(...),
+    sha256: str = Form(...)
+):
+    secret_file = await create_next_file_version(name=name, file=file, nonce_b64=nonce, sha256_b64=sha256)
+
+    return SecretFileResponse(
+        message="Secret string version created successfully",
+        data=CreatedSecretFileData(name=name, file_id=secret_file.file_id)
     )
 
 

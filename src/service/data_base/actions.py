@@ -64,14 +64,14 @@ async def _get_secret(
         return result_db.scalar_one_or_none()
 
 
-async def get_last_version_in_secret_string(name: str) -> int:
+async def get_last_version_in_secret_string(name: str) -> int | None:
     result = await _get_last_version_secret(SecretsStrings, name)
-    return result if result else 0
+    return result
 
 
-async def get_last_version_in_secret_file(name: str) -> int:
+async def get_last_version_in_secret_file(name: str) -> int | None:
     result = await _get_last_version_secret(SecretsFiles, name)
-    return result if result else 0
+    return result
 
 
 async def get_secret_string(name: str, version: int = None) -> SecretsStrings | None:
@@ -102,6 +102,25 @@ async def get_secret(name: str) -> Secrets | None:
         return result_db.scalar_one_or_none()
 
 
+async def create_secret(name: str) -> Secrets:
+    async with get_db() as session_db:
+
+        check_secret = await get_secret(name)
+
+        if check_secret:
+            if check_secret.is_deleted:
+                raise HTTPException(409, "Secret is deleted")
+
+            raise NameAlreadyExists(name)
+
+        secret = Secrets(name=name)
+        session_db.add(secret)
+
+        await session_db.commit()
+
+    return secret
+
+
 async def create_secret_string(
     name: str,
     encrypted_data: bytes,
@@ -119,23 +138,11 @@ async def create_secret_string(
     if (not new_secret and not secret_id) or (new_secret and secret_id):
         raise ValueError()
 
+    if new_secret:
+        secret = await create_secret(name)
+        secret_id = secret.secret_id
+
     async with get_db() as session_db:
-        if new_secret:
-            check_secret = await get_secret(name)
-
-            if check_secret:
-                if check_secret.is_deleted:
-                    raise HTTPException(409, "Secret is deleted")
-
-                raise NameAlreadyExists(name)
-
-            secret = Secrets(name=name)
-            session_db.add(secret)
-
-            await session_db.flush()
-
-            secret_id = secret.secret_id
-
         secret_string = SecretsStrings(
             secret_id=secret_id,
             encrypted_data=encrypted_data,
@@ -145,12 +152,12 @@ async def create_secret_string(
             enc_version=ENC_VERSION
         )
 
-        session_db.add(secret_string)
-
         log = AuditLog(
             action="The user created a secret string",
             secret_name=name
         )
+
+        session_db.add(secret_string)
         session_db.add(log)
 
         await session_db.commit()
@@ -164,31 +171,26 @@ async def create_secret_file_service(
     file: UploadFile,
     nonce_b64: str,
     sha256_b64: str,
-):
+    version: int = 1,
+    new_secret: bool = True,
+    secret_id: int = None
+) -> SecretsFiles:
+    if (not new_secret and not secret_id) or (new_secret and secret_id):
+        raise ValueError()
+
     nonce = decode_b64(nonce_b64, 12, "nonce")
     sha256 = decode_b64(sha256_b64, 32, "sha256")
 
+    if new_secret:
+        secret = await create_secret(name)
+        secret_id = secret.secret_id
+
     async with get_db() as session_db:
-        secret = await get_secret(name)
-
         async with session_db.begin():
-            if secret and secret.is_deleted:
-                raise HTTPException(409, "Secret is deleted")
-
-            if secret:
-                raise NameAlreadyExists(name)
-
-            version = await get_last_version_in_secret_file(name) + 1
-
             file_name = await save_uploaded_file(file)
 
-            secret = Secrets(name=name)
-            session_db.add(secret)
-
-            await session_db.flush()
-
             db_file = SecretsFiles(
-                secret_id=secret.secret_id,
+                secret_id=secret_id,
                 version=version,
                 file_name=file_name,
                 size_bytes=file.spool_max_size if hasattr(file, "spool_max_size") else 0,
@@ -221,15 +223,42 @@ async def create_next_string_version(data: SecretStringCreate) -> SecretsStrings
         **(data.model_dump())
     )
 
-    async with get_db() as session_db:
-        log = AuditLog(
-            action="The user has created a new version of the secret",
-            secret_name=data.name
-        )
-        session_db.add(log)
-        await session_db.commit()
+    await create_log(
+        action="The user has created a new version of the secret string",
+        secret_name=data.name
+    )
 
     return secret_str
+
+
+async def create_next_file_version(
+    name: str,
+    file: UploadFile,
+    nonce_b64: str,
+    sha256_b64: str,
+) -> SecretsFiles:
+    last_version = await get_last_version_in_secret_file(name)
+    secret = await get_secret_files(name)
+
+    if not last_version or not secret:
+        raise SecretNotFound(name)
+
+    new_secret_file = await create_secret_file_service(
+        name=name,
+        file=file,
+        nonce_b64=nonce_b64,
+        sha256_b64=sha256_b64,
+        version=last_version + 1,
+        new_secret=False,
+        secret_id=secret.secret_id
+    )
+
+    await create_log(
+        action="The user has created a new version of the secret file",
+        secret_name=name
+    )
+
+    return new_secret_file
 
 
 async def mark_is_delete_secret(name: str) -> bool:
