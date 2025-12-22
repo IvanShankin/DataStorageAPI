@@ -2,7 +2,7 @@ import requests
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from src.config import BASE_DIR
+from src.config import CERTS_DIR
 from src.main import app
 from tests.conftest import uvicorn_server
 
@@ -11,10 +11,10 @@ from tests.conftest import uvicorn_server
 @pytest.mark.asyncio
 async def test_certificate(uvicorn_server):
     cert = (
-        str(BASE_DIR / "certs" / "storage" / "server_shop_cert.pem"),
-        str(BASE_DIR / "certs" / "storage" / "server_shop_key.pem")
+        str(CERTS_DIR / "client" / "client_cert.pem"),
+        str(CERTS_DIR / "client" / "client_key.pem")
     )
-    ca = str(BASE_DIR / "certs" / "ca" / "ca.crt")
+    ca = str(CERTS_DIR / "ca" / "server_ca_chain.pem")
 
     r = requests.get(
         "https://127.0.0.1:7591/health",

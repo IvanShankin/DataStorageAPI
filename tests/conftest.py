@@ -13,7 +13,7 @@ from src.service.data_base import core
 load_dotenv()    # Загружает переменные из .env
 MODE = os.getenv('MODE')
 
-from src.config import BASE_DIR
+from src.config import BASE_DIR, CERTS_DIR
 from src.service.data_base.filling_database import create_database
 
 import pytest
@@ -67,8 +67,6 @@ def wait_for_port(host: str, port: int, timeout: float = 5.0):
 
 @pytest.fixture(scope="session")
 def uvicorn_server():
-    cert_dir = BASE_DIR / "certs"
-
     cmd = [
         sys.executable,
         "-m",
@@ -76,9 +74,9 @@ def uvicorn_server():
         "src.main:app",
         "--host", "127.0.0.1",
         "--port", "7591",
-        "--ssl-certfile", str(cert_dir / "storage" / "server_shop_cert.pem"),
-        "--ssl-keyfile", str(cert_dir / "storage" / "server_shop_key.pem"),
-        "--ssl-ca-certs", str(cert_dir / "ca" / "ca.crt"),
+        "--ssl-certfile", str(CERTS_DIR / "server" / "server_cert.pem"),
+        "--ssl-keyfile", str(CERTS_DIR / "server" / "server_key.pem"),
+        "--ssl-ca-certs", str(CERTS_DIR / "ca" / "server_ca_chain.pem"),
         "--ssl-cert-reqs", "2",  # ssl.CERT_REQUIRED
         "--log-level", "warning",
     ]

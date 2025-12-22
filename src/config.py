@@ -17,6 +17,10 @@ sys.path.append(str(BASE_DIR))
 
 MEDIA_DIR = BASE_DIR / "media"
 MEDIA_DIR.mkdir(exist_ok=True)
+
 LOG_DIR = MEDIA_DIR / 'logs'
 LOG_FILE = LOG_DIR / "storage_service.log"
 SECRET_FILES_DIR = MEDIA_DIR / "secret_files"
+
+CERTS_DIR = BASE_DIR / "certs"
+CERTS_DIR.mkdir(exist_ok=True)
