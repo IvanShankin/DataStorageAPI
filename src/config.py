@@ -22,5 +22,9 @@ LOG_DIR = MEDIA_DIR / 'logs'
 LOG_FILE = LOG_DIR / "storage_service.log"
 SECRET_FILES_DIR = MEDIA_DIR / "secret_files"
 
-CERTS_DIR = BASE_DIR / "certs"
-CERTS_DIR.mkdir(exist_ok=True)
+SSL_CERT_FILE = os.getenv("SSL_CERT_FILE")
+SSL_KEY_FILE = os.getenv("SSL_KEY_FILE")
+SSL_CA_FILE = os.getenv("SSL_CA_FILE")
+
+if not all([SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE]):
+    raise RuntimeError("SSL configuration is incomplete")

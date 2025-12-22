@@ -12,8 +12,10 @@ from src.service.data_base import core
 
 load_dotenv()    # Загружает переменные из .env
 MODE = os.getenv('MODE')
+SSL_CLIENT_CERT_FILE = os.getenv('SSL_CLIENT_CERT_FILE')
+SSL_CLIENT_KEY_FILE = os.getenv('SSL_CLIENT_KEY_FILE')
 
-from src.config import BASE_DIR, CERTS_DIR
+from src.config import SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE
 from src.service.data_base.filling_database import create_database
 
 import pytest
@@ -74,9 +76,9 @@ def uvicorn_server():
         "src.main:app",
         "--host", "127.0.0.1",
         "--port", "7591",
-        "--ssl-certfile", str(CERTS_DIR / "server" / "server_cert.pem"),
-        "--ssl-keyfile", str(CERTS_DIR / "server" / "server_key.pem"),
-        "--ssl-ca-certs", str(CERTS_DIR / "ca" / "server_ca_chain.pem"),
+        "--ssl-certfile", str(SSL_CERT_FILE),
+        "--ssl-keyfile", str(SSL_KEY_FILE),
+        "--ssl-ca-certs", str(SSL_CA_FILE),
         "--ssl-cert-reqs", "2",  # ssl.CERT_REQUIRED
         "--log-level", "warning",
     ]

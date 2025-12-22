@@ -5,7 +5,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from src.config import CERTS_DIR
+from src.config import SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE
 from src.routers import main_router
 from src.service.data_base.filling_database import create_database
 
@@ -21,9 +21,9 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=7591,
         log_level="debug",
-        ssl_certfile=str(CERTS_DIR / "server" / "server_cert.pem"),
-        ssl_keyfile=str(CERTS_DIR / "server" / "server_key.pem"),
-        ssl_ca_certs=str(CERTS_DIR / "ca" / "server_ca_chain.pem"),
+        ssl_certfile=str(SSL_CERT_FILE),
+        ssl_keyfile=str(SSL_KEY_FILE),
+        ssl_ca_certs=str(SSL_CA_FILE),
         ssl_cert_reqs=ssl.CERT_REQUIRED
     )
 
