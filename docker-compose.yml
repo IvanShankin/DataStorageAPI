@@ -6,21 +6,32 @@ services:
     env_file:
       - .env
     environment:
+      # App
+      - MODE=${MODE}
+      - APP_PORT=220
       - ENC_VERSION=${ENC_VERSION}
-      # данные для подключения к БД
+
+      # Database
       - DB_HOST=db
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
+
+      # TLS / mTLS
       - SSL_CERT_FILE=${SSL_CERT_FILE}
       - SSL_KEY_FILE=${SSL_KEY_FILE}
       - SSL_CA_FILE=${SSL_CA_FILE}
 
-      - MODE=${MODE}
+
+    volumes:
+      # Сертификаты монтируются с хоста (read-only)
+      - ${CERTS_DIR}:/app/certs:ro
+
     depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped  # Автоперезапуск при падении
+
+    restart: unless-stopped
 
   db:
     image: postgres:15
@@ -31,13 +42,12 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Сохраняет данные БД
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-
 volumes:
-  postgres_data:  # Том для PostgreSQL
+  postgres_data:

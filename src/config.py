@@ -6,10 +6,15 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Загружает переменные из .env
 ENC_VERSION = int(os.getenv('ENC_VERSION'))
+APP_HOST = os.getenv('APP_HOST')
+APP_PORT = int(os.getenv('APP_PORT'))
+
 DB_HOST = os.getenv('DB_HOST')
 DB_USER = os.getenv('DB_USER')
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_NAME = os.getenv('DB_NAME')
+
+MODE = os.getenv('MODE')
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,5 +31,9 @@ SSL_CERT_FILE = os.getenv("SSL_CERT_FILE")
 SSL_KEY_FILE = os.getenv("SSL_KEY_FILE")
 SSL_CA_FILE = os.getenv("SSL_CA_FILE")
 
-if not all([SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE]):
-    raise RuntimeError("SSL configuration is incomplete")
+if MODE != "TEST" or "DEV":
+    if (
+        not all([SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE]) or
+        not (os.path.isfile(SSL_CERT_FILE) and os.path.isfile(SSL_KEY_FILE) and os.path.isfile(SSL_CA_FILE))
+    ):
+        raise RuntimeError("SSL configuration is incomplete")

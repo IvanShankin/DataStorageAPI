@@ -11,11 +11,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from src.service.data_base import core
 
 load_dotenv()    # Загружает переменные из .env
-MODE = os.getenv('MODE')
 SSL_CLIENT_CERT_FILE = os.getenv('SSL_CLIENT_CERT_FILE')
 SSL_CLIENT_KEY_FILE = os.getenv('SSL_CLIENT_KEY_FILE')
 
-from src.config import SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE
+from src.config import SSL_CERT_FILE, SSL_KEY_FILE, SSL_CA_FILE, MODE, APP_HOST, APP_PORT
 from src.service.data_base.filling_database import create_database
 
 import pytest
@@ -74,8 +73,8 @@ def uvicorn_server():
         "-m",
         "uvicorn",
         "src.main:app",
-        "--host", "127.0.0.1",
-        "--port", "7591",
+        "--host", APP_HOST,
+        "--port", str(APP_PORT),
         "--ssl-certfile", str(SSL_CERT_FILE),
         "--ssl-keyfile", str(SSL_KEY_FILE),
         "--ssl-ca-certs", str(SSL_CA_FILE),
@@ -90,7 +89,7 @@ def uvicorn_server():
     )
 
     try:
-        wait_for_port("127.0.0.1", 7591)
+        wait_for_port(APP_HOST, APP_PORT)
         yield
     finally:
         proc.send_signal(signal.SIGTERM)

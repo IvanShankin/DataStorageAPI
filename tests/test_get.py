@@ -2,7 +2,7 @@ import requests
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from src.config import SSL_CA_FILE
+from src.config import SSL_CA_FILE, APP_PORT, APP_HOST
 from tests.conftest import SSL_CLIENT_CERT_FILE, SSL_CLIENT_KEY_FILE
 from src.main import app
 from tests.conftest import uvicorn_server
@@ -18,7 +18,7 @@ async def test_certificate(uvicorn_server):
     ca = str(SSL_CA_FILE)
 
     r = requests.get(
-        "https://127.0.0.1:7591/health",
+        f"https://{APP_HOST}:{APP_PORT}/health",
         cert=cert,
         verify=ca,
         timeout=10,
@@ -34,7 +34,7 @@ async def test_certificate(uvicorn_server):
 async def test_fail_ssl(uvicorn_server):
     with pytest.raises(requests.exceptions.SSLError):
         r = requests.get(
-            "https://127.0.0.1:7591/health",
+            f"https://{APP_HOST}:{APP_PORT}/health",
             timeout=10,
         )
 
